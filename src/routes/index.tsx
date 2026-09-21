@@ -54,15 +54,14 @@ function Home() {
       setSaving(false);
       return;
     }
-    const names = [sellerA, sellerB].map((n) => n.trim()).filter(Boolean);
+    const names = sellers.map((n) => n.trim()).filter(Boolean);
     if (names.length) {
       await supabase.from("sellers").insert(names.map((n) => ({ event_id: data.id, name: n })));
     }
     setSaving(false);
     setOpen(false);
     setName("");
-    setSellerA("");
-    setSellerB("");
+    setSellers([""]);
     queryClient.invalidateQueries({ queryKey: ["events"] });
     navigate({ to: "/fiesta/$id", params: { id: data.id } });
   }
