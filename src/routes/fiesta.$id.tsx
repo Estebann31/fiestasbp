@@ -1,13 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Check, Loader2, Plus, Ticket, Trash2, Users, Wallet } from "lucide-react";
+import { ArrowLeft, BarChart3, Check, Loader2, PencilLine, Plus, Ticket, Trash2, Users, Wallet } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { euros, fetchEvent, fetchSales, fetchSellers } from "@/lib/party";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+type Step = "who" | "apuntar" | "fiesta";
 
 export const Route = createFileRoute("/fiesta/$id")({
   head: () => ({
@@ -32,6 +34,7 @@ export const Route = createFileRoute("/fiesta/$id")({
 function PartyPage() {
   const { id } = Route.useParams();
   const queryClient = useQueryClient();
+  const [step, setStep] = useState<Step>("who");
   const [me, setMe] = useState<string | null>(null);
   const [buyer, setBuyer] = useState("");
   const [room, setRoom] = useState("");
@@ -143,6 +146,7 @@ function PartyPage() {
     );
   }
 
+  const myName = sellers.find((s) => s.id === me)?.name;
   const visible = tab === "mias" && me ? sales.filter((s) => s.seller_id === me) : sales;
   const sellerName = (sid: string) => sellers.find((s) => s.id === sid)?.name ?? "—";
 
@@ -155,163 +159,210 @@ function PartyPage() {
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="truncate font-display text-xl font-bold">{ev.name}</h1>
           <p className="text-xs text-muted-foreground">
             {euros(Number(ev.price))} por entrada · {ev.total_tickets} en total
           </p>
         </div>
-      </div>
-
-      <section className="mt-6 grid grid-cols-2 gap-3">
-        <StatCard icon={<Ticket className="h-4 w-4" />} label="Vendidas" value={String(stats.sold)} highlight />
-        <StatCard icon={<Users className="h-4 w-4" />} label="Van a la fiesta" value={String(stats.sold)} />
-        <StatCard icon={<Wallet className="h-4 w-4" />} label="Recaudado" value={euros(stats.collected)} />
-        <StatCard icon={<Ticket className="h-4 w-4" />} label="Quedan" value={String(stats.remaining)} />
-      </section>
-      {stats.pending > 0 && (
-        <p className="mt-3 rounded-xl bg-secondary px-4 py-2 text-center text-sm text-muted-foreground">
-          {stats.pending} entrada{stats.pending === 1 ? "" : "s"} sin pagar
-        </p>
-      )}
-
-      <section className="mt-6 rounded-2xl border border-border bg-card p-4">
-        <Label className="text-xs uppercase tracking-wide text-muted-foreground">¿Quién eres?</Label>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {sellers.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => chooseMe(s.id)}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                me === s.id
-                  ? "bg-gradient-party text-primary-foreground"
-                  : "border border-border text-muted-foreground"
-              }`}
-            >
-              {s.name}
-            </button>
-          ))}
-        </div>
-        <div className="mt-3 flex gap-2">
-          <Input
-            value={newSeller}
-            onChange={(e) => setNewSeller(e.target.value)}
-            placeholder="Añadir vendedor"
-            className="h-10"
-          />
-          <Button variant="secondary" className="h-10" onClick={addSeller} disabled={!newSeller.trim()}>
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
-      </section>
-
-      <section className="mt-4 space-y-3 rounded-2xl border border-border bg-card p-4">
-        <h2 className="font-display text-base font-semibold">Apuntar una entrada</h2>
-        <Input
-          value={buyer}
-          onChange={(e) => setBuyer(e.target.value)}
-          placeholder="Nombre de la persona"
-          className="h-11"
-        />
-        <div className="flex gap-2">
-          <Input
-            value={room}
-            onChange={(e) => setRoom(e.target.value)}
-            placeholder="Habitación"
-            className="h-11"
-          />
+        {step !== "who" && (
           <button
-            type="button"
-            onClick={() => setPaid((p) => !p)}
-            className={`flex h-11 shrink-0 items-center gap-2 rounded-md px-4 text-sm font-medium ${
-              paid ? "bg-success text-success-foreground" : "border border-border text-muted-foreground"
+            onClick={() => setStep(step === "fiesta" ? "apuntar" : "fiesta")}
+            className={`flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-semibold transition-colors ${
+              step === "fiesta"
+                ? "bg-gradient-party text-primary-foreground"
+                : "border border-border text-muted-foreground"
             }`}
           >
-            <Check className="h-4 w-4" /> Pagado
+            {step === "fiesta" ? (
+              <>
+                <PencilLine className="h-3.5 w-3.5" /> Apuntar
+              </>
+            ) : (
+              <>
+                <BarChart3 className="h-3.5 w-3.5" /> Fiesta
+              </>
+            )}
           </button>
-        </div>
-        <Button
-          className="h-12 w-full text-base font-semibold"
-          onClick={addSale}
-          disabled={!me || !buyer.trim() || saving}
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Añadir entrada"}
-        </Button>
-        {!me && <p className="text-center text-xs text-muted-foreground">Elige antes quién eres.</p>}
-      </section>
+        )}
+      </div>
 
-      <section className="mt-6">
-        <div className="flex gap-2">
-          {(["todos", "mias"] as const).map((t) => (
+      {step === "who" && (
+        <section className="mt-10 rounded-2xl border border-border bg-card p-5">
+          <h2 className="font-display text-lg font-bold">¿Quién eres?</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Elígete para apuntar entradas con tu nombre.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {sellers.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => chooseMe(s.id)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                  me === s.id
+                    ? "bg-gradient-party text-primary-foreground"
+                    : "border border-border text-muted-foreground"
+                }`}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 flex gap-2">
+            <Input
+              value={newSeller}
+              onChange={(e) => setNewSeller(e.target.value)}
+              placeholder="Añadir vendedor"
+              className="h-10"
+            />
+            <Button variant="secondary" className="h-10" onClick={addSeller} disabled={!newSeller.trim()}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+          <Button
+            className="mt-6 h-12 w-full text-base font-semibold"
+            onClick={() => setStep("apuntar")}
+            disabled={!me}
+          >
+            Siguiente
+          </Button>
+          {!me && <p className="mt-2 text-center text-xs text-muted-foreground">Elige primero quién eres.</p>}
+        </section>
+      )}
+
+      {step === "apuntar" && (
+        <section className="mt-6 space-y-3 rounded-2xl border border-border bg-card p-4">
+          {myName && (
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium">{myName}</span>
+              <button
+                onClick={() => setStep("who")}
+                className="text-xs text-muted-foreground underline underline-offset-2"
+              >
+                no soy yo
+              </button>
+            </div>
+          )}
+          <h2 className="font-display text-base font-semibold">Apuntar una entrada</h2>
+          <Input
+            value={buyer}
+            onChange={(e) => setBuyer(e.target.value)}
+            placeholder="Nombre de la persona"
+            className="h-11"
+          />
+          <div className="flex gap-2">
+            <Input
+              value={room}
+              onChange={(e) => setRoom(e.target.value)}
+              placeholder="Habitación"
+              className="h-11"
+            />
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`flex-1 rounded-full py-2 text-sm font-medium ${
-                tab === t ? "bg-secondary text-foreground" : "text-muted-foreground"
+              type="button"
+              onClick={() => setPaid((p) => !p)}
+              className={`flex h-11 shrink-0 items-center gap-2 rounded-md px-4 text-sm font-medium ${
+                paid ? "bg-success text-success-foreground" : "border border-border text-muted-foreground"
               }`}
             >
-              {t === "todos" ? "Todas" : "Las mías"}
+              <Check className="h-4 w-4" /> Pagado
             </button>
-          ))}
-        </div>
-
-        <ul className="mt-3 space-y-2">
-          {visible.map((s) => (
-            <li
-              key={s.id}
-              className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3"
-            >
-              <button
-                onClick={() => togglePaid(s.id, !s.paid)}
-                className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${
-                  s.paid ? "bg-success text-success-foreground" : "border border-border text-muted-foreground"
-                }`}
-                aria-label="Marcar pagado"
-              >
-                <Check className="h-4 w-4" />
-              </button>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{s.buyer_name}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {s.room ? `Hab. ${s.room} · ` : ""}
-                  {sellerName(s.seller_id)}
-                  {s.paid ? "" : " · pendiente"}
-                </p>
-              </div>
-              <button
-                onClick={() => removeSale(s.id)}
-                className="shrink-0 text-muted-foreground"
-                aria-label="Borrar"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </li>
-          ))}
-          {visible.length === 0 && (
-            <li className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-              Aún no hay entradas apuntadas.
-            </li>
-          )}
-        </ul>
-      </section>
-
-      {sellers.length > 0 && (
-        <section className="mt-6 rounded-2xl border border-border bg-card p-4">
-          <h2 className="font-display text-base font-semibold">Resumen por vendedor</h2>
-          <ul className="mt-3 space-y-2">
-            {sellers.map((s) => {
-              const mine = sales.filter((x) => x.seller_id === s.id);
-              return (
-                <li key={s.id} className="flex items-center justify-between text-sm">
-                  <span>{s.name}</span>
-                  <span className="text-muted-foreground">
-                    {mine.length} · {euros(mine.filter((m) => m.paid).length * Number(ev.price))}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          </div>
+          <Button
+            className="h-12 w-full text-base font-semibold"
+            onClick={addSale}
+            disabled={!me || !buyer.trim() || saving}
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Añadir entrada"}
+          </Button>
         </section>
+      )}
+
+      {step === "fiesta" && (
+        <>
+          <section className="mt-6 grid grid-cols-2 gap-3">
+            <StatCard icon={<Ticket className="h-4 w-4" />} label="Vendidas" value={String(stats.sold)} highlight />
+            <StatCard icon={<Users className="h-4 w-4" />} label="Van a la fiesta" value={String(stats.sold)} />
+            <StatCard icon={<Wallet className="h-4 w-4" />} label="Recaudado" value={euros(stats.collected)} />
+            <StatCard icon={<Ticket className="h-4 w-4" />} label="Quedan" value={String(stats.remaining)} />
+          </section>
+          {stats.pending > 0 && (
+            <p className="mt-3 rounded-xl bg-secondary px-4 py-2 text-center text-sm text-muted-foreground">
+              {stats.pending} entrada{stats.pending === 1 ? "" : "s"} sin pagar
+            </p>
+          )}
+
+          <section className="mt-6">
+            <div className="flex gap-2">
+              {(["todos", "mias"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={`flex-1 rounded-full py-2 text-sm font-medium ${
+                    tab === t ? "bg-secondary text-foreground" : "text-muted-foreground"
+                  }`}
+                >
+                  {t === "todos" ? "Todas" : "Las mías"}
+                </button>
+              ))}
+            </div>
+
+            <ul className="mt-3 space-y-2">
+              {visible.map((s) => (
+                <li
+                  key={s.id}
+                  className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3"
+                >
+                  <button
+                    onClick={() => togglePaid(s.id, !s.paid)}
+                    className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${
+                      s.paid ? "bg-success text-success-foreground" : "border border-border text-muted-foreground"
+                    }`}
+                    aria-label="Marcar pagado"
+                  >
+                    <Check className="h-4 w-4" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{s.buyer_name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {s.room ? `Hab. ${s.room} · ` : ""}
+                      {sellerName(s.seller_id)}
+                      {s.paid ? "" : " · pendiente"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => removeSale(s.id)}
+                    className="shrink-0 text-muted-foreground"
+                    aria-label="Borrar"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </li>
+              ))}
+              {visible.length === 0 && (
+                <li className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                  Aún no hay entradas apuntadas.
+                </li>
+              )}
+            </ul>
+          </section>
+
+          {sellers.length > 0 && (
+            <section className="mt-6 rounded-2xl border border-border bg-card p-4">
+              <h2 className="font-display text-base font-semibold">Resumen por vendedor</h2>
+              <ul className="mt-3 space-y-2">
+                {sellers.map((s) => {
+                  const mine = sales.filter((x) => x.seller_id === s.id);
+                  return (
+                    <li key={s.id} className="flex items-center justify-between text-sm">
+                      <span>{s.name}</span>
+                      <span className="text-muted-foreground">
+                        {mine.length} · {euros(mine.filter((m) => m.paid).length * Number(ev.price))}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+        </>
       )}
     </main>
   );
