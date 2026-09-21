@@ -1,24 +1,156 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { PartyPopper, Plus, ChevronRight, Loader2 } from "lucide-react";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
+import { supabase } from "@/integrations/supabase/client";
+import { fetchEvents, euros } from "@/lib/party";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
 export const Route = createFileRoute("/")({
-  component: Index,
+  head: () => ({
+    meta: [
+      { title: "Contador de entradas | Fiestas" },
+      {
+        name: "description",
+        content:
+          "Lleva la cuenta en tiempo real de las entradas vendidas, el dinero recaudado y quién ha vendido cada entrada.",
+      },
+      { property: "og:title", content: "Contador de entradas | Fiestas" },
+      {
+        property: "og:description",
+        content: "Entradas vendidas, dinero recaudado y listas por vendedor, sincronizado al instante.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
+  component: Home,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
-function Index() {
+function Home() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState("");
+  const [total, setTotal] = useState("80");
+  const [price, setPrice] = useState("7");
+  const [sellerA, setSellerA] = useState("");
+  const [sellerB, setSellerB] = useState("");
+
+  const { data: events, isLoading } = useQuery({ queryKey: ["events"], queryFn: fetchEvents });
+
+  async function createEvent() {
+    if (!name.trim()) return;
+    setSaving(true);
+    const { data, error } = await supabase
+      .from("events")
+      .insert({ name: name.trim(), total_tickets: Number(total) || 0, price: Number(price) || 0 })
+      .select()
+      .single();
+    if (error || !data) {
+      setSaving(false);
+      return;
+    }
+    const names = [sellerA, sellerB].map((n) => n.trim()).filter(Boolean);
+    if (names.length) {
+      await supabase.from("sellers").insert(names.map((n) => ({ event_id: data.id, name: n })));
+    }
+    setSaving(false);
+    setOpen(false);
+    setName("");
+    setSellerA("");
+    setSellerB("");
+    queryClient.invalidateQueries({ queryKey: ["events"] });
+    navigate({ to: "/fiesta/$id", params: { id: data.id } });
+  }
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <main className="mx-auto min-h-screen w-full max-w-md px-5 pb-28 pt-10">
+      <div className="flex items-center gap-3">
+        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-party text-primary-foreground">
+          <PartyPopper className="h-5 w-5" />
+        </span>
+        <div>
+          <h1 className="text-2xl font-bold leading-tight">Entradas</h1>
+          <p className="text-sm text-muted-foreground">Contador compartido en directo</p>
+        </div>
+      </div>
+
+      <div className="mt-8 space-y-3">
+        {isLoading && (
+          <div className="flex justify-center py-10 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        )}
+        {events?.map((ev) => (
+          <button
+            key={ev.id}
+            onClick={() => navigate({ to: "/fiesta/$id", params: { id: ev.id } })}
+            className="flex w-full items-center justify-between rounded-2xl border border-border bg-card p-4 text-left transition-colors active:bg-secondary"
+          >
+            <span>
+              <span className="block font-display text-lg font-semibold">{ev.name}</span>
+              <span className="block text-sm text-muted-foreground">
+                {ev.total_tickets} entradas · {euros(Number(ev.price))} cada una
+              </span>
+            </span>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </button>
+        ))}
+        {!isLoading && events?.length === 0 && !open && (
+          <p className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            Todavía no hay ninguna fiesta. Crea la primera.
+          </p>
+        )}
+      </div>
+
+      {open ? (
+        <div className="mt-6 space-y-4 rounded-2xl border border-border bg-card p-5">
+          <h2 className="font-display text-lg font-semibold">Nueva fiesta</h2>
+          <div className="space-y-2">
+            <Label htmlFor="name">Nombre de la fiesta</Label>
+            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Fiesta de fin de curso" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="total">Entradas</Label>
+              <Input id="total" type="number" inputMode="numeric" value={total} onChange={(e) => setTotal(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="price">Precio (€)</Label>
+              <Input id="price" type="number" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="s1">Vendedor 1</Label>
+              <Input id="s1" value={sellerA} onChange={(e) => setSellerA(e.target.value)} placeholder="Tu nombre" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="s2">Vendedor 2</Label>
+              <Input id="s2" value={sellerB} onChange={(e) => setSellerB(e.target.value)} placeholder="Su nombre" />
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="secondary" className="flex-1" onClick={() => setOpen(false)}>
+              Cancelar
+            </Button>
+            <Button className="flex-1" onClick={createEvent} disabled={saving || !name.trim()}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Crear"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="fixed inset-x-0 bottom-0 mx-auto w-full max-w-md bg-gradient-to-t from-background via-background to-transparent p-5 pt-10">
+          <Button className="h-12 w-full text-base font-semibold" onClick={() => setOpen(true)}>
+            <Plus className="mr-1 h-5 w-5" /> Nueva fiesta
+          </Button>
+        </div>
+      )}
+    </main>
   );
 }
