@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { PartyPopper, Plus, ChevronRight, Loader2 } from "lucide-react";
+import { PartyPopper, Plus, ChevronRight, Loader2, X } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { fetchEvents, euros } from "@/lib/party";
@@ -38,8 +38,7 @@ function Home() {
   const [name, setName] = useState("");
   const [total, setTotal] = useState("80");
   const [price, setPrice] = useState("7");
-  const [sellerA, setSellerA] = useState("");
-  const [sellerB, setSellerB] = useState("");
+  const [sellers, setSellers] = useState<string[]>([""]);
 
   const { data: events, isLoading } = useQuery({ queryKey: ["events"], queryFn: fetchEvents });
 
@@ -55,15 +54,14 @@ function Home() {
       setSaving(false);
       return;
     }
-    const names = [sellerA, sellerB].map((n) => n.trim()).filter(Boolean);
+    const names = sellers.map((n) => n.trim()).filter(Boolean);
     if (names.length) {
       await supabase.from("sellers").insert(names.map((n) => ({ event_id: data.id, name: n })));
     }
     setSaving(false);
     setOpen(false);
     setName("");
-    setSellerA("");
-    setSellerB("");
+    setSellers([""]);
     queryClient.invalidateQueries({ queryKey: ["events"] });
     navigate({ to: "/fiesta/$id", params: { id: data.id } });
   }
@@ -125,15 +123,39 @@ function Home() {
               <Input id="price" type="number" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label>Vendedores</Label>
             <div className="space-y-2">
-              <Label htmlFor="s1">Vendedor 1</Label>
-              <Input id="s1" value={sellerA} onChange={(e) => setSellerA(e.target.value)} placeholder="Tu nombre" />
+              {sellers.map((seller, i) => (
+                <div key={i} className="flex gap-2">
+                  <Input
+                    value={seller}
+                    onChange={(e) =>
+                      setSellers((prev) => prev.map((s, j) => (j === i ? e.target.value : s)))
+                    }
+                    placeholder={i === 0 ? "Tu nombre" : `Vendedor ${i + 1}`}
+                  />
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-10 w-10 shrink-0 text-muted-foreground"
+                    onClick={() => setSellers((prev) => prev.filter((_, j) => j !== i))}
+                    disabled={sellers.length === 1}
+                    aria-label="Quitar vendedor"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="s2">Vendedor 2</Label>
-              <Input id="s2" value={sellerB} onChange={(e) => setSellerB(e.target.value)} placeholder="Su nombre" />
-            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full border border-dashed border-border"
+              onClick={() => setSellers((prev) => [...prev, ""])}
+            >
+              <Plus className="mr-1 h-4 w-4" /> Añadir vendedor
+            </Button>
           </div>
           <div className="flex gap-3">
             <Button variant="secondary" className="flex-1" onClick={() => setOpen(false)}>
