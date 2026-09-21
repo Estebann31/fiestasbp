@@ -1,10 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PartyPopper, Plus, ChevronRight, Loader2, X } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
-import { fetchEvents, euros } from "@/lib/party";
+import { errorMessage, listSavedParties, saveParty, type SavedParty } from "@/lib/party";
+import { createEvent as createEventFn } from "@/lib/party.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,38 +31,51 @@ export const Route = createFileRoute("/")({
 
 function Home() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
   const [total, setTotal] = useState("80");
   const [price, setPrice] = useState("7");
+  const [pin, setPin] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
   const [sellers, setSellers] = useState<string[]>([""]);
 
-  const { data: events, isLoading } = useQuery({ queryKey: ["events"], queryFn: fetchEvents });
+  // Solo se listan las fiestas a las que este móvil ya ha entrado con PIN.
+  const [events, setEvents] = useState<SavedParty[] | null>(null);
+  useEffect(() => setEvents(listSavedParties()), []);
+  const isLoading = events === null;
+
+  const pinOk = pin.trim().length >= 4;
 
   async function createEvent() {
-    if (!name.trim()) return;
+    if (!name.trim() || !pinOk) return;
     setSaving(true);
-    const { data, error } = await supabase
-      .from("events")
-      .insert({ name: name.trim(), total_tickets: Number(total) || 0, price: Number(price) || 0 })
-      .select()
-      .single();
-    if (error || !data) {
+    setFormError(null);
+    try {
+      const res = await createEventFn({
+        data: {
+          name: name.trim(),
+          total: Math.max(0, Math.floor(Number(total) || 0)),
+          price: Math.max(0, Number(price) || 0),
+          pin: pin.trim(),
+          sellers: sellers.map((n) => n.trim()).filter(Boolean),
+        },
+      });
+      if (!res.ok) {
+        setFormError(errorMessage(res.error));
+        return;
+      }
+      saveParty({ id: res.id, name: res.name, pin: pin.trim() });
+      setOpen(false);
+      setName("");
+      setPin("");
+      setSellers([""]);
+      navigate({ to: "/fiesta/$id", params: { id: res.id } });
+    } catch {
+      setFormError(errorMessage("SERVER"));
+    } finally {
       setSaving(false);
-      return;
     }
-    const names = sellers.map((n) => n.trim()).filter(Boolean);
-    if (names.length) {
-      await supabase.from("sellers").insert(names.map((n) => ({ event_id: data.id, name: n })));
-    }
-    setSaving(false);
-    setOpen(false);
-    setName("");
-    setSellers([""]);
-    queryClient.invalidateQueries({ queryKey: ["events"] });
-    navigate({ to: "/fiesta/$id", params: { id: data.id } });
   }
 
   return (
@@ -92,16 +104,14 @@ function Home() {
           >
             <span>
               <span className="block font-display text-lg font-semibold">{ev.name}</span>
-              <span className="block text-sm text-muted-foreground">
-                {ev.total_tickets} entradas · {euros(Number(ev.price))} cada una
-              </span>
             </span>
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </button>
         ))}
         {!isLoading && events?.length === 0 && !open && (
           <p className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            Todavía no hay ninguna fiesta. Crea la primera.
+            Todavía no has entrado en ninguna fiesta en este móvil. Crea una o abre el enlace que te
+            hayan pasado.
           </p>
         )}
       </div>
@@ -122,6 +132,19 @@ function Home() {
               <Label htmlFor="price">Precio (€)</Label>
               <Input id="price" type="number" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="pin">PIN de la fiesta</Label>
+            <Input
+              id="pin"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="Mínimo 4 caracteres"
+              autoComplete="off"
+            />
+            <p className="text-xs text-muted-foreground">
+              Pásaselo solo a quien vaya a vender. Sin él no se puede ver ni cambiar nada.
+            </p>
           </div>
           <div className="space-y-2">
             <Label>Vendedores</Label>
@@ -157,11 +180,12 @@ function Home() {
               <Plus className="mr-1 h-4 w-4" /> Añadir vendedor
             </Button>
           </div>
+          {formError && <p className="text-sm text-destructive">{formError}</p>}
           <div className="flex gap-3">
             <Button variant="secondary" className="flex-1" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button className="flex-1" onClick={createEvent} disabled={saving || !name.trim()}>
+            <Button className="flex-1" onClick={createEvent} disabled={saving || !name.trim() || !pinOk}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Crear"}
             </Button>
           </div>

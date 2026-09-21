@@ -19,6 +19,9 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          pin_failed_attempts: number
+          pin_hash: string | null
+          pin_locked_until: string | null
           price: number
           total_tickets: number
         }
@@ -26,6 +29,9 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
+          pin_failed_attempts?: number
+          pin_hash?: string | null
+          pin_locked_until?: string | null
           price?: number
           total_tickets?: number
         }
@@ -33,6 +39,9 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          pin_failed_attempts?: number
+          pin_hash?: string | null
+          pin_locked_until?: string | null
           price?: number
           total_tickets?: number
         }

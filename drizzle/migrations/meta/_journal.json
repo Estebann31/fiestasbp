@@ -8,6 +8,13 @@
       "when": 1790008661211,
       "tag": "0000_create_party_ticket_counter",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790010720162,
+      "tag": "0001_secure_party_access",
+      "breakpoints": true
     }
   ]
 }

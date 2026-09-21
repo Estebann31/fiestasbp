@@ -1,10 +1,39 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, BarChart3, Check, Loader2, PencilLine, Plus, Ticket, Trash2, Users, Wallet } from "lucide-react";
+import {
+  ArrowLeft,
+  BarChart3,
+  Check,
+  Loader2,
+  Lock,
+  PencilLine,
+  Plus,
+  Share2,
+  Ticket,
+  Trash2,
+  Users,
+  Wallet,
+} from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
-import { euros, fetchEvent, fetchSales, fetchSellers } from "@/lib/party";
+import {
+  errorMessage,
+  euros,
+  forgetParty,
+  getSavedParty,
+  saveParty,
+  type SavedParty,
+} from "@/lib/party";
+import {
+  addSale as addSaleFn,
+  addSeller as addSellerFn,
+  deleteSale as deleteSaleFn,
+  getEventInfo,
+  getParty,
+  joinEvent,
+  setSalePaid as setSalePaidFn,
+} from "@/lib/party.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +62,129 @@ export const Route = createFileRoute("/fiesta/$id")({
 
 function PartyPage() {
   const { id } = Route.useParams();
+  // undefined = aún leyendo el móvil, null = sin PIN guardado
+  const [access, setAccess] = useState<SavedParty | null | undefined>(undefined);
+
+  useEffect(() => {
+    setAccess(getSavedParty(id));
+  }, [id]);
+
+  if (access === undefined) return <FullScreenLoader />;
+  if (access === null) return <PinGate id={id} onJoined={setAccess} />;
+  return (
+    <PartyContent
+      key={id}
+      access={access}
+      onLostAccess={() => {
+        forgetParty(id);
+        setAccess(null);
+      }}
+    />
+  );
+}
+
+function FullScreenLoader() {
+  return (
+    <main className="grid min-h-screen place-items-center text-muted-foreground">
+      <Loader2 className="h-6 w-6 animate-spin" />
+    </main>
+  );
+}
+
+function PinGate({ id, onJoined }: { id: string; onJoined: (p: SavedParty) => void }) {
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const infoQ = useQuery({
+    queryKey: ["event-info", id],
+    queryFn: () => getEventInfo({ data: { id } }),
+    retry: false,
+  });
+  const info = infoQ.data;
+
+  async function join() {
+    if (pin.trim().length < 4) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await joinEvent({ data: { id, pin: pin.trim() } });
+      if (!res.ok) {
+        setError(errorMessage(res.error));
+        return;
+      }
+      const saved = { id, name: res.name, pin: pin.trim() };
+      saveParty(saved);
+      onJoined(saved);
+    } catch {
+      setError(errorMessage("SERVER"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (infoQ.isLoading) return <FullScreenLoader />;
+  if (!info || !info.ok) {
+    return (
+      <main className="grid min-h-screen place-items-center px-6 text-center">
+        <div>
+          <p className="text-muted-foreground">No encontramos esta fiesta.</p>
+          <Link to="/" className="mt-4 inline-block font-semibold text-primary">
+            Volver
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="mx-auto min-h-screen w-full max-w-md px-5 pb-16 pt-8">
+      <Link
+        to="/"
+        className="grid h-9 w-9 place-items-center rounded-full border border-border text-muted-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+      </Link>
+      <section className="mt-10 rounded-2xl border border-border bg-card p-5">
+        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-secondary">
+          <Lock className="h-5 w-5" />
+        </span>
+        <h1 className="mt-4 font-display text-xl font-bold">{info.name}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {info.hasPin
+            ? "Introduce el PIN de la fiesta para ver y apuntar entradas."
+            : "Esta fiesta todavía no tiene PIN. Elige uno (mínimo 4 caracteres) y pásaselo solo a quien venda."}
+        </p>
+        <form
+          className="mt-4 space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            join();
+          }}
+        >
+          <Input
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            placeholder="PIN"
+            autoComplete="off"
+            className="h-11"
+            autoFocus
+          />
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button
+            type="submit"
+            className="h-12 w-full text-base font-semibold"
+            disabled={busy || pin.trim().length < 4}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : info.hasPin ? "Entrar" : "Poner PIN y entrar"}
+          </Button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function PartyContent({ access, onLostAccess }: { access: SavedParty; onLostAccess: () => void }) {
+  const { id, pin } = access;
   const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>("who");
   const [me, setMe] = useState<string | null>(null);
@@ -42,27 +194,32 @@ function PartyPage() {
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<"todos" | "mias">("todos");
   const [newSeller, setNewSeller] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const eventQ = useQuery({ queryKey: ["event", id], queryFn: () => fetchEvent(id) });
-  const sellersQ = useQuery({ queryKey: ["sellers", id], queryFn: () => fetchSellers(id) });
-  const salesQ = useQuery({ queryKey: ["sales", id], queryFn: () => fetchSales(id) });
+  const partyQ = useQuery({
+    queryKey: ["party", id],
+    queryFn: () => getParty({ data: { id, pin } }),
+    // Red de seguridad por si se pierde algún aviso en tiempo real.
+    refetchInterval: 20_000,
+  });
 
   useEffect(() => {
     const stored = localStorage.getItem(`seller:${id}`);
     if (stored) setMe(stored);
   }, [id]);
 
+  // Si el PIN ya no vale (lo han cambiado o la fiesta no existe), volver a pedirlo.
+  const denied = partyQ.data && !partyQ.data.ok ? partyQ.data.error : null;
+  useEffect(() => {
+    if (denied === "WRONG_PIN" || denied === "NO_PIN" || denied === "NOT_FOUND") onLostAccess();
+  }, [denied, onLostAccess]);
+
+  // Tiempo real: el servidor avisa "algo ha cambiado" (sin datos) y recargamos con el PIN.
   useEffect(() => {
     const channel = supabase
-      .channel(`party-${id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["sales", id] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "sellers" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["sellers", id] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "events" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["event", id] });
+      .channel(`party:${id}`)
+      .on("broadcast", { event: "change" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["party", id] });
       })
       .subscribe();
     return () => {
@@ -70,9 +227,10 @@ function PartyPage() {
     };
   }, [id, queryClient]);
 
-  const ev = eventQ.data;
-  const sellers = sellersQ.data ?? [];
-  const sales = salesQ.data ?? [];
+  const party = partyQ.data?.ok ? partyQ.data : null;
+  const ev = party?.event;
+  const sellers = party?.sellers ?? [];
+  const sales = party?.sales ?? [];
 
   const stats = useMemo(() => {
     const price = Number(ev?.price ?? 0);
@@ -82,63 +240,97 @@ function PartyPage() {
     return { sold, collected, remaining, pending: sales.filter((s) => !s.paid).length };
   }, [sales, ev]);
 
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["party", id] });
+
+  /** Ejecuta una acción en el servidor y muestra el error si falla. Devuelve true si fue bien. */
+  async function run(action: () => Promise<{ ok: boolean; error?: string }>): Promise<boolean> {
+    setActionError(null);
+    try {
+      const res = await action();
+      if (!res.ok) {
+        if (res.error === "WRONG_PIN" || res.error === "NO_PIN") onLostAccess();
+        setActionError(errorMessage(res.error ?? "SERVER"));
+        return false;
+      }
+      refresh();
+      return true;
+    } catch {
+      setActionError(errorMessage("SERVER"));
+      return false;
+    }
+  }
+
   function chooseMe(sellerId: string) {
     localStorage.setItem(`seller:${id}`, sellerId);
     setMe(sellerId);
   }
 
   async function addSeller() {
-    if (!newSeller.trim()) return;
-    const { data } = await supabase
-      .from("sellers")
-      .insert({ event_id: id, name: newSeller.trim() })
-      .select()
-      .single();
-    setNewSeller("");
-    queryClient.invalidateQueries({ queryKey: ["sellers", id] });
-    if (data) chooseMe(data.id);
+    const name = newSeller.trim();
+    if (!name) return;
+    let createdId: string | null = null;
+    const ok = await run(async () => {
+      const res = await addSellerFn({ data: { id, pin, name } });
+      if (res.ok) createdId = res.seller.id;
+      return res;
+    });
+    if (ok) {
+      setNewSeller("");
+      if (createdId) chooseMe(createdId);
+    }
   }
 
   async function addSale() {
     if (!me || !buyer.trim()) return;
     setSaving(true);
-    await supabase.from("sales").insert({
-      event_id: id,
-      seller_id: me,
-      buyer_name: buyer.trim(),
-      room: room.trim() || null,
-      paid,
-    });
+    const ok = await run(() =>
+      addSaleFn({
+        data: { id, pin, sellerId: me, buyerName: buyer.trim(), room: room.trim() || null, paid },
+      }),
+    );
     setSaving(false);
-    setBuyer("");
-    setRoom("");
-    queryClient.invalidateQueries({ queryKey: ["sales", id] });
+    // Solo se vacía el formulario si se ha guardado de verdad.
+    if (ok) {
+      setBuyer("");
+      setRoom("");
+    }
   }
 
   async function togglePaid(saleId: string, value: boolean) {
-    await supabase.from("sales").update({ paid: value }).eq("id", saleId);
-    queryClient.invalidateQueries({ queryKey: ["sales", id] });
+    await run(() => setSalePaidFn({ data: { id, pin, saleId, paid: value } }));
   }
 
   async function removeSale(saleId: string) {
-    await supabase.from("sales").delete().eq("id", saleId);
-    queryClient.invalidateQueries({ queryKey: ["sales", id] });
+    await run(() => deleteSaleFn({ data: { id, pin, saleId } }));
   }
 
-  if (eventQ.isLoading) {
-    return (
-      <main className="grid min-h-screen place-items-center text-muted-foreground">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </main>
-    );
+  async function share() {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: ev?.name ?? "Fiesta", url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setActionError("Enlace copiado. El PIN pásalo aparte.");
+      }
+    } catch {
+      /* cancelado */
+    }
   }
+
+  if (partyQ.isLoading) return <FullScreenLoader />;
 
   if (!ev) {
     return (
       <main className="grid min-h-screen place-items-center px-6 text-center">
         <div>
-          <p className="text-muted-foreground">No encontramos esta fiesta.</p>
-          <Link to="/" className="mt-4 inline-block font-semibold text-primary">
+          <p className="text-muted-foreground">
+            {errorMessage(denied ?? (partyQ.isError ? "SERVER" : "NOT_FOUND"))}
+          </p>
+          <Button variant="secondary" className="mt-4" onClick={() => partyQ.refetch()}>
+            Reintentar
+          </Button>
+          <Link to="/" className="mt-4 block font-semibold text-primary">
             Volver
           </Link>
         </div>
@@ -165,6 +357,13 @@ function PartyPage() {
             {euros(Number(ev.price))} por entrada · {ev.total_tickets} en total
           </p>
         </div>
+        <button
+          onClick={share}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-border text-muted-foreground"
+          aria-label="Compartir enlace"
+        >
+          <Share2 className="h-4 w-4" />
+        </button>
         {step !== "who" && (
           <button
             onClick={() => setStep(step === "fiesta" ? "apuntar" : "fiesta")}
@@ -186,6 +385,10 @@ function PartyPage() {
           </button>
         )}
       </div>
+
+      {actionError && (
+        <p className="mt-4 rounded-xl bg-secondary px-4 py-2 text-center text-sm">{actionError}</p>
+      )}
 
       {step === "who" && (
         <section className="mt-10 rounded-2xl border border-border bg-card p-5">

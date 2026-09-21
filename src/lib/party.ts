@@ -1,5 +1,3 @@
-import { supabase } from "@/integrations/supabase/client";
-
 export type EventRow = {
   id: string;
   name: string;
@@ -25,41 +23,68 @@ export type SaleRow = {
   created_at: string;
 };
 
-export async function fetchEvents(): Promise<EventRow[]> {
-  const { data, error } = await supabase
-    .from("events")
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as EventRow[];
-}
-
-export async function fetchEvent(id: string): Promise<EventRow> {
-  const { data, error } = await supabase.from("events").select("*").eq("id", id).single();
-  if (error) throw error;
-  return data as EventRow;
-}
-
-export async function fetchSellers(eventId: string): Promise<SellerRow[]> {
-  const { data, error } = await supabase
-    .from("sellers")
-    .select("*")
-    .eq("event_id", eventId)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as SellerRow[];
-}
-
-export async function fetchSales(eventId: string): Promise<SaleRow[]> {
-  const { data, error } = await supabase
-    .from("sales")
-    .select("*")
-    .eq("event_id", eventId)
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as SaleRow[];
-}
-
 export function euros(n: number): string {
   return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(n);
+}
+
+// ---- Acceso guardado en este móvil ----
+// El PIN de cada fiesta se guarda solo en este dispositivo para no pedirlo siempre.
+
+export type SavedParty = { id: string; name: string; pin: string };
+
+const KEY = (id: string) => `party:${id}`;
+
+export function getSavedParty(id: string): SavedParty | null {
+  try {
+    const raw = localStorage.getItem(KEY(id));
+    return raw ? (JSON.parse(raw) as SavedParty) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveParty(p: SavedParty) {
+  try {
+    localStorage.setItem(KEY(p.id), JSON.stringify(p));
+  } catch {
+    /* sin almacenamiento: habrá que meter el PIN otra vez */
+  }
+}
+
+export function forgetParty(id: string) {
+  try {
+    localStorage.removeItem(KEY(id));
+  } catch {
+    /* nada */
+  }
+}
+
+export function listSavedParties(): SavedParty[] {
+  const out: SavedParty[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith("party:")) continue;
+      const p = JSON.parse(localStorage.getItem(k) ?? "null") as SavedParty | null;
+      if (p?.id && p.pin) out.push(p);
+    }
+  } catch {
+    /* nada */
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function errorMessage(code: string): string {
+  switch (code) {
+    case "WRONG_PIN":
+      return "PIN incorrecto.";
+    case "LOCKED":
+      return "Demasiados intentos fallidos. Espera 10 minutos.";
+    case "NOT_FOUND":
+      return "No encontramos esta fiesta.";
+    case "INVALID":
+      return "Datos no válidos.";
+    default:
+      return "Algo ha fallado. Revisa la conexión e inténtalo otra vez.";
+  }
 }
