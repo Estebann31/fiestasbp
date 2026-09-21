@@ -38,8 +38,7 @@ function Home() {
   const [name, setName] = useState("");
   const [total, setTotal] = useState("80");
   const [price, setPrice] = useState("7");
-  const [sellerA, setSellerA] = useState("");
-  const [sellerB, setSellerB] = useState("");
+  const [sellers, setSellers] = useState<string[]>([""]);
 
   const { data: events, isLoading } = useQuery({ queryKey: ["events"], queryFn: fetchEvents });
 
