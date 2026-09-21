@@ -123,15 +123,39 @@ function Home() {
               <Input id="price" type="number" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label>Vendedores</Label>
             <div className="space-y-2">
-              <Label htmlFor="s1">Vendedor 1</Label>
-              <Input id="s1" value={sellerA} onChange={(e) => setSellerA(e.target.value)} placeholder="Tu nombre" />
+              {sellers.map((seller, i) => (
+                <div key={i} className="flex gap-2">
+                  <Input
+                    value={seller}
+                    onChange={(e) =>
+                      setSellers((prev) => prev.map((s, j) => (j === i ? e.target.value : s)))
+                    }
+                    placeholder={i === 0 ? "Tu nombre" : `Vendedor ${i + 1}`}
+                  />
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-10 w-10 shrink-0 text-muted-foreground"
+                    onClick={() => setSellers((prev) => prev.filter((_, j) => j !== i))}
+                    disabled={sellers.length === 1}
+                    aria-label="Quitar vendedor"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="s2">Vendedor 2</Label>
-              <Input id="s2" value={sellerB} onChange={(e) => setSellerB(e.target.value)} placeholder="Su nombre" />
-            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full border border-dashed border-border"
+              onClick={() => setSellers((prev) => [...prev, ""])}
+            >
+              <Plus className="mr-1 h-4 w-4" /> Añadir vendedor
+            </Button>
           </div>
           <div className="flex gap-3">
             <Button variant="secondary" className="flex-1" onClick={() => setOpen(false)}>
