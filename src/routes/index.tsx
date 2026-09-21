@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { PartyPopper, Plus, ChevronRight, Loader2 } from "lucide-react";
+import { PartyPopper, Plus, ChevronRight, Loader2, X } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { fetchEvents, euros } from "@/lib/party";
