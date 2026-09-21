@@ -14,7 +14,104 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      events: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          price: number
+          total_tickets: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          price?: number
+          total_tickets?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          price?: number
+          total_tickets?: number
+        }
+        Relationships: []
+      }
+      sales: {
+        Row: {
+          buyer_name: string
+          created_at: string
+          event_id: string
+          id: string
+          paid: boolean
+          room: string | null
+          seller_id: string
+        }
+        Insert: {
+          buyer_name: string
+          created_at?: string
+          event_id: string
+          id?: string
+          paid?: boolean
+          room?: string | null
+          seller_id: string
+        }
+        Update: {
+          buyer_name?: string
+          created_at?: string
+          event_id?: string
+          id?: string
+          paid?: boolean
+          room?: string | null
+          seller_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "sellers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sellers: {
+        Row: {
+          created_at: string
+          event_id: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sellers_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
